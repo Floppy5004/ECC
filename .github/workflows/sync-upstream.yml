@@ -1,0 +1,54 @@
+name: Sync with upstream (affaan-m/ECC)
+
+on:
+  schedule:
+    # Jeden Montag um 03:00 UTC (05:00 MEZ / 04:00 MESZ)
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Force sync auch bei Konflikten'
+        required: false
+        default: 'false'
+
+jobs:
+  sync:
+    name: Sync fork mit upstream
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Upstream als Remote hinzufügen
+        run: |
+          git remote add upstream https://github.com/affaan-m/ECC.git
+          git fetch upstream main
+
+      - name: Prüfen ob Update verfügbar
+        id: check
+        run: |
+          LOCAL=$(git rev-parse HEAD)
+          UPSTREAM=$(git rev-parse upstream/main)
+          if [ "$LOCAL" = "$UPSTREAM" ]; then
+            echo "up_to_date=true" >> $GITHUB_OUTPUT
+            echo "✅ Fork ist bereits aktuell."
+          else
+            echo "up_to_date=false" >> $GITHUB_OUTPUT
+            BEHIND=$(git rev-list --count HEAD..upstream/main)
+            echo "🔄 Fork ist $BEHIND Commits hinter upstream."
+          fi
+
+      - name: Fork mit upstream synchronisieren
+        if: steps.check.outputs.up_to_date == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git merge upstream/main --ff-only || git merge upstream/main -m "chore: sync with upstream affaan-m/ECC"
+          git push origin main
+          echo "✅ Fork erfolgreich synchronisiert."
